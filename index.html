@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FinancePulse — Personal Financial Dashboard</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ─── LOADING ──────────────────────────────────────────────── -->
+<div id="loading-overlay">
+  <div class="loading-card">
+    <div class="spinner"></div>
+    <div class="loading-title">Analyzing Statement</div>
+    <div class="loading-text" id="loading-text">Reading PDF…</div>
+  </div>
+</div>
+
+<!-- ─── TOAST ────────────────────────────────────────────────── -->
+<div id="toast"></div>
+
+<!-- ─── MODAL ────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <div class="modal-title">Edit Category</div>
+    <div class="modal-desc" id="modal-desc"></div>
+    <div class="category-grid" id="category-grid"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveCategory()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── UPLOAD PAGE ───────────────────────────────────────────── -->
+<div id="upload-page">
+  <div class="brand">
+    <div class="brand-logo">💳</div>
+    <div class="brand-name">FinancePulse</div>
+    <div class="brand-tagline">Personal finance dashboard · 100% local · zero uploads</div>
+  </div>
+
+  <div class="upload-card">
+    <div class="drop-zone" id="drop-zone">
+      <input type="file" id="file-input" accept=".pdf" multiple>
+      <div class="drop-icon">📄</div>
+      <div class="drop-title">Drop your bank statements here</div>
+      <div class="drop-subtitle">or click to browse · multiple PDFs supported</div>
+      <div class="drop-formats">
+        <span class="format-badge">Chase</span>
+        <span class="format-badge">Bank of America</span>
+        <span class="format-badge">Wells Fargo</span>
+        <span class="format-badge">Capital One</span>
+        <span class="format-badge">Citi</span>
+        <span class="format-badge">HDFC</span>
+        <span class="format-badge">ICICI</span>
+        <span class="format-badge">SBI</span>
+        <span class="format-badge">Any PDF</span>
+      </div>
+    </div>
+
+    <!-- Staged files queue -->
+    <div id="file-queue" class="file-queue"></div>
+
+    <!-- Analyze button — shown once files are staged -->
+    <div id="analyze-btn-wrap" class="analyze-btn-wrap" style="display:none">
+      <button id="analyze-btn" class="btn btn-primary" onclick="analyzeAll()">Analyze Statements</button>
+    </div>
+
+    <div id="upload-error" class="error-banner hidden"></div>
+
+    <div class="upload-features">
+      <div class="feature-item">
+        <div class="feature-icon" style="background:rgba(139,92,246,0.12)">🤖</div>
+        <div class="feature-text">
+          <h4>Auto-Categorization</h4>
+          <p>15+ smart spending categories from your transactions</p>
+        </div>
+      </div>
+      <div class="feature-item">
+        <div class="feature-icon" style="background:rgba(59,130,246,0.12)">📊</div>
+        <div class="feature-text">
+          <h4>Interactive Charts</h4>
+          <p>Trends, breakdowns, monthly comparisons</p>
+        </div>
+      </div>
+      <div class="feature-item">
+        <div class="feature-icon" style="background:rgba(16,185,129,0.12)">🔒</div>
+        <div class="feature-text">
+          <h4>100% Private</h4>
+          <p>Everything runs in your browser — no server</p>
+        </div>
+      </div>
+      <div class="feature-item">
+        <div class="feature-icon" style="background:rgba(245,158,11,0.12)">✏️</div>
+        <div class="feature-text">
+          <h4>Editable</h4>
+          <p>Fix any category with one click, charts update live</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="privacy-note">
+      🔒 Your data never leaves your device. Zero network requests for your statement.
+    </div>
+  </div>
+</div>
+
+<!-- ─── DASHBOARD ─────────────────────────────────────────────── -->
+<div id="dashboard-page">
+
+  <nav class="navbar">
+    <div class="nav-left">
+      <div class="nav-logo">💳</div>
+      <div class="nav-title">FinancePulse</div>
+      <div id="nav-period" class="nav-period"></div>
+    </div>
+    <div class="nav-actions">
+      <!-- Hidden input for adding more statements from the dashboard -->
+      <input type="file" id="add-more-input" accept=".pdf" multiple style="display:none">
+      <button class="btn btn-ghost" onclick="exportCSV()">⬇ CSV</button>
+      <button class="btn btn-ghost" onclick="addMoreStatements()">+ Add Statement</button>
+      <button class="btn btn-primary" onclick="resetDashboard()">↑ New Upload</button>
+    </div>
+  </nav>
+
+  <!-- Loaded statements chips bar -->
+  <div id="statements-bar" class="statements-bar" style="display:none">
+    <span class="stmt-bar-label">Loaded:</span>
+    <div class="stmt-chips" id="stmt-chips"></div>
+  </div>
+
+  <div class="dashboard-content">
+
+    <!-- Summary Cards -->
+    <div class="summary-grid">
+      <div class="summary-card income">
+        <div class="card-icon">💰</div>
+        <div class="card-label">Total Income</div>
+        <div class="card-amount positive" id="total-income">—</div>
+        <div class="card-sub" id="income-count"></div>
+      </div>
+      <div class="summary-card expense">
+        <div class="card-icon">💸</div>
+        <div class="card-label">Total Expenses</div>
+        <div class="card-amount negative" id="total-expenses">—</div>
+        <div class="card-sub" id="expense-count"></div>
+      </div>
+      <div class="summary-card net">
+        <div class="card-icon">📈</div>
+        <div class="card-label">Net Balance</div>
+        <div class="card-amount neutral" id="net-balance">—</div>
+        <div class="card-sub">Income minus Expenses</div>
+      </div>
+      <div class="summary-card savings">
+        <div class="card-icon">🎯</div>
+        <div class="card-label">Savings Rate</div>
+        <div class="card-amount neutral" id="savings-rate">—</div>
+        <div class="card-sub">of income saved</div>
+      </div>
+    </div>
+
+    <!-- Insights Row -->
+    <div class="insights-row">
+      <div class="insight-card">
+        <div class="insight-icon">🔥</div>
+        <div class="insight-text">
+          <h4>Top Spending Category</h4>
+          <p id="top-category">—</p>
+        </div>
+      </div>
+      <div class="insight-card">
+        <div class="insight-icon">📅</div>
+        <div class="insight-text">
+          <h4>Biggest Expense Month</h4>
+          <p id="biggest-month">—</p>
+        </div>
+      </div>
+      <div class="insight-card">
+        <div class="insight-icon">💡</div>
+        <div class="insight-text">
+          <h4>Avg Monthly Spending</h4>
+          <p id="avg-monthly">—</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="charts-grid">
+
+      <!-- Category Donut -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <div>
+            <div class="chart-title">Spending by Category</div>
+            <div class="chart-subtitle">Expenses only — click segment to filter</div>
+          </div>
+        </div>
+        <div class="chart-container" style="height:185px">
+          <canvas id="categoryChart"></canvas>
+        </div>
+        <div class="category-list" id="category-list"></div>
+      </div>
+
+      <!-- Income vs Expenses Bar -->
+      <div class="chart-card">
+        <div class="chart-header">
+          <div>
+            <div class="chart-title">Income vs Expenses</div>
+            <div class="chart-subtitle">Period breakdown</div>
+          </div>
+          <div class="chart-tabs">
+            <div class="chart-tab active" data-view="monthly" onclick="switchBarView('monthly',this)">Monthly</div>
+            <div class="chart-tab"        data-view="weekly"  onclick="switchBarView('weekly',this)">Weekly</div>
+          </div>
+        </div>
+        <div class="chart-container" style="height:270px">
+          <canvas id="barChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Monthly Trends — full width -->
+      <div class="chart-card full-width">
+        <div class="chart-header">
+          <div>
+            <div class="chart-title">Monthly Trends</div>
+            <div class="chart-subtitle">Income, expenses &amp; net over time</div>
+          </div>
+          <div class="chart-tabs">
+            <div class="chart-tab active" onclick="switchTrendView('all',this)">All</div>
+            <div class="chart-tab"        onclick="switchTrendView('income',this)">Income</div>
+            <div class="chart-tab"        onclick="switchTrendView('expense',this)">Expenses</div>
+          </div>
+        </div>
+        <div class="chart-container" style="height:240px">
+          <canvas id="trendChart"></canvas>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Transactions Table -->
+    <div class="transactions-card">
+      <div class="transactions-header">
+        <div>
+          <div class="chart-title">All Transactions</div>
+          <div class="chart-subtitle" id="tx-summary">Loading…</div>
+        </div>
+        <div class="transactions-filters">
+          <input type="text" class="filter-input" id="search-input"
+            placeholder="🔍  Search…" oninput="applyFilters()" style="width:170px">
+          <select class="filter-select" id="cat-filter"   onchange="applyFilters()">
+            <option value="">All Categories</option>
+          </select>
+          <select class="filter-select" id="type-filter"  onchange="applyFilters()">
+            <option value="">All Types</option>
+            <option value="income">Income only</option>
+            <option value="expense">Expenses only</option>
+          </select>
+          <select class="filter-select" id="month-filter" onchange="applyFilters()">
+            <option value="">All Months</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="warn-banner" class="warn-banner">
+        ⚠️ <span id="warn-text"></span>
+      </div>
+
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th onclick="toggleSort('date')">Date <span id="s-date"></span></th>
+              <th onclick="toggleSort('description')">Description <span id="s-description"></span></th>
+              <th onclick="toggleSort('category')">Category <span id="s-category"></span></th>
+              <th onclick="toggleSort('amount')" style="text-align:right">Amount <span id="s-amount"></span></th>
+              <th style="width:36px"></th>
+            </tr>
+          </thead>
+          <tbody id="tx-tbody"></tbody>
+        </table>
+      </div>
+
+      <div class="pagination">
+        <div class="pagination-info"     id="page-info"></div>
+        <div class="pagination-controls" id="page-controls"></div>
+      </div>
+    </div>
+
+  </div><!-- /dashboard-content -->
+</div><!-- /dashboard-page -->
+
+<script src="js/categorizer.js"></script>
+<script src="js/parser.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
